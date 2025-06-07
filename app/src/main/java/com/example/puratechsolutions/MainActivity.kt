@@ -2,6 +2,7 @@ package com.example.puratechsolutions
 
 import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
@@ -18,6 +19,10 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.FileProvider
 import com.example.puratechsolutions.databinding.ActivityMainBinding
 import android.view.WindowManager
+import android.widget.Toast
+import androidx.activity.viewModels
+import androidx.appcompat.app.AlertDialog
+import androidx.core.content.ContextCompat
 import com.itextpdf.kernel.pdf.PdfDocument
 import com.itextpdf.kernel.pdf.PdfWriter
 import com.itextpdf.layout.Document
@@ -29,8 +34,21 @@ import java.io.FileOutputStream
 class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
+    private val viewModel: WebViewViewModel by viewModels()
     private var filePathCallback: ValueCallback<Array<Uri>>? = null
     private var cameraPhotoUri: Uri? = null
+
+    private val permissionLauncher = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { permissions ->
+        viewModel.handlePermissionsResult(permissions)
+        if (permissions.all { it.value }) {
+            Toast.makeText(this, "Permissions granted", Toast.LENGTH_SHORT).show()
+        } else {
+            Toast.makeText(this, "Some permissions denied, some features may not work", Toast.LENGTH_LONG).show()
+            showPermissionRetryDialog()
+        }
+        setupWebView()
+    }
+
 
     private val fileChooserLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == RESULT_OK) {
@@ -72,8 +90,28 @@ class MainActivity : AppCompatActivity() {
             permissions.add(Manifest.permission.READ_EXTERNAL_STORAGE)
             permissions.add(Manifest.permission.WRITE_EXTERNAL_STORAGE)
         }
-        setupWebView()
+        val permissionsToRequest = permissions.filter {
+            ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
+        }.toTypedArray()
+
+        if (permissionsToRequest.isEmpty()) {
+            Toast.makeText(this, "Permissions granted", Toast.LENGTH_SHORT).show()
+            setupWebView()
+        } else {
+            permissionLauncher.launch(permissionsToRequest)
+        }
     }
+
+    private fun showPermissionRetryDialog() {
+        AlertDialog.Builder(this)
+            .setTitle("Permissions Required")
+            .setMessage("Camera and storage permissions are needed for full functionality. Would you like to try again?")
+            .setPositiveButton("Retry") { _, _ -> checkPermissions() }
+            .setNegativeButton("Continue") { _, _ -> }
+            .setCancelable(false)
+            .show()
+    }
+
 
     private fun convertPhotoToPdf(photoUri: Uri): Uri? {
         try {
